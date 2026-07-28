@@ -10,15 +10,27 @@ db.prepare(`
     CREATE TABLE IF NOT EXISTS AgeUsers (
     
     userId TEXT PRIMARY KEY,
-    username TEXT,
-    age INTEGER
+    username TEXT DEFAULT "",
+    age INTEGER DEFAULT 0
     
 )
     
 
     `).run();
 
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS BannedUsers(
+    userId TEXT PRIMARY KEY
+    
+    )
+    `).run()
 
+db.prepare(`
+    CREATE TABLE IF NOT EXISTS Regected(
+    userId TEXT PRIMARY KEY
+    
+    )
+`).run()
 
 const {
     Client,
@@ -47,7 +59,9 @@ const {
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    TextInputAssertions
+    TextInputAssertions,
+    User,
+    messageLink
 } = require("discord.js");
 
 const client = new Client({
@@ -68,25 +82,27 @@ const {REST, Routes, ApplicationCommandOptionType, applicationDirectory, Applica
 const commands = [ 
 
 
-{
+  {
+  name: "clearhistory",
 
-  name: "challenge",
+  description: "Clear some one ban or regect history",
 
-  description: "challenge some one",
+  options: [
+      {
+        name: "target",
 
-  options: [{
+        type:  ApplicationCommandOptionType.Mentionable,
 
-    name: "person",
+        default_member_permissions: PermissionFlagsBits.Administrator.toString(),
 
-    description: "the person you want to challenge",
+        description: "the target user to clear history",
 
-    type: ApplicationCommandOptionType.Mentionable,
+        required: true,
+      }
 
-    required: true,
+  ],
 
-
-
-}]},
+  },
   {
     
     name: "ban",
@@ -209,10 +225,10 @@ if (msg.content === "button") {
             embeds: [
 
               new EmbedBuilder()
-              .setTitle("__🔔the ping role__")
-              .addFields({name: "__❓what dose it do__", value: "\nIt give us the right to mension you"+"\nwhen ever we want to"},
-                         {name: "__❓what do I get__", value: "\nyou will get to see our news"+"\nand be the first to know about it"},
-                         {name: "__❓how to get it__", value: "\nto get the" + " " + "<@&1521643199943282851>" + " " + "just click the button down below"},
+              .setTitle("__🔔رتبة البينغ__")
+              .addFields({name: "__❓ماذا تفعله هذه الرتبة__", value: "\nانها تعطينا الحق للقيام بعمل منشن لك"+"\nمتى ما اردنا ذلك"},
+                         {name: "__❓ما ساحصل عليه انا__", value: "\nسوف تتمكن من رؤية اخبارنا الجديدة"+"\nوتصبح من الاوائل الذين سيعرفون عنها"},
+                         {name: "__❓كيف يمكنني الحصول عليها__", value: "\nللحصول على رتبة" + " " + "<@&1521643199943282851>" + " " + "اضغط الزر ادناه"},
                ).setColor("Yellow")
 
 
@@ -244,7 +260,7 @@ client.on("interactionCreate", async (iny) => {
             await iny.member.roles.add(roleId);
 
             await iny.reply({
-                content: "🔔 the role <@&1521643199943282851> has been added",
+                content: `🔔<@&1521643199943282851> لقد تم اضافة رتبة `,
                 flags: MessageFlags.Ephemeral
             });
 
@@ -253,7 +269,7 @@ client.on("interactionCreate", async (iny) => {
             await iny.member.roles.remove(roleId);
 
             await iny.reply({
-                content: "🔕 the role <@&1521643199943282851> has been removed",
+                content:`🔕<@&1521643199943282851> لقد تم ازالة رتبة `,
                 flags: MessageFlags.Ephemeral
             });
 
@@ -278,11 +294,11 @@ if (int.commandName === "ban") {
         });
     }
 
-    let reason = int.options.getString("reason") || "No reason";
+    let reason = int.options.getString("reason") || "لم يتم تحديد السبب";
 
     let embed = new EmbedBuilder()
-        .setTitle(`__🚫You just got banned from ${int.guild.name} server__`)
-        .addFields({name: "__❓reason__", value: "```" + reason + "```"})
+        .setTitle(`__🚫لقد تلقيت للتو حظر في سيرفر ${int.guild.name} server__`)
+        .addFields({name: "__❓السبب__", value: "```" + reason + "```"})
         .setColor("White")
         .setAuthor({name: int.user.globalName, iconURL: int.user.avatarURL()})
         .setThumbnail(int.guild.iconURL())
@@ -319,7 +335,7 @@ if (interaction.commandName !== "ping") return;
 
     if (Users.has(interaction.user.id)) {
 
-return interaction.reply({content: "wait for"+ "```" + "10m" +"```" + "for next ping",  flags: MessageFlags.Ephemeral })}
+return interaction.reply({content: "انتضر"+ "```" + "10m" +"```" + "لتتمكن من عمل بينغ اخر",  flags: MessageFlags.Ephemeral })}
 
 
 const embed4 = new EmbedBuilder()
@@ -341,7 +357,7 @@ try {
 });
 
     await interaction.reply({
-    content: "ping succeed!",
+    content: "تم عمل بينغ بنجاح!",
     flags: MessageFlags.Ephemeral
 });
 
@@ -350,8 +366,8 @@ await new Promise(resolve => setTimeout(resolve, 600000));
     await interaction.user.send({
     embeds: [
         new EmbedBuilder()
-            .setTitle(`__🥳You can ping now! in ${interaction.guild} server__`)
-            .setDescription("**[Go to server](https://discord.gg/8EvubxT5)**")
+            .setTitle(`__🥳يمكنك عمل بينغ الان! ${interaction.guild} server__`)
+            .setDescription("**[اذهب للسيرفر](https://discord.gg/8EvubxT5)**")
             .setThumbnail(interaction.guild.iconURL())
             .setColor("Green")
             .setTimestamp()
@@ -365,55 +381,57 @@ await new Promise(resolve => setTimeout(resolve, 600000));
 
 // search and sign system
 
+const URL = new Map()
+
 client.on("messageCreate", async (msg) => {
 
     if (msg.content === "S&S") {
 
         const TextContainer = new TextDisplayBuilder()
-            .setContent("# Choose your actions!");
+            .setContent("# مرحبا بك!");
 
         const TextContainer2 = new TextDisplayBuilder()
-            .setContent("## •You have to apply to the server\n ## •So you can access other server channels");
+            .setContent("## •يجب عليك تسجيل الدخول\n ## •لتظهر لك باقي قنوات السيرفر");
 
         const sparetor = new SeparatorBuilder();
 
         const DeleteButton = new ButtonBuilder()
             .setCustomId("Delete")
             .setEmoji("🗑️")
-            .setLabel("Delete my info")
+            .setLabel("حذف معلوماتي")
             .setStyle(ButtonStyle.Danger);
 
         const SearchButton = new ButtonBuilder()
             .setCustomId("MySelfSearch")
             .setEmoji("🔎")
-            .setLabel("Show my info")
+            .setLabel("عرض معلوماتي")
             .setStyle(ButtonStyle.Primary);
 
         const SearchAllButton = new ButtonBuilder()
             .setCustomId("AllSearch")
             .setEmoji("👥")
-            .setLabel("Show all members info")
+            .setLabel("عرض معلومات جميع الاعضاء")
             .setStyle(ButtonStyle.Primary);
 
         const selectMenus = new StringSelectMenuBuilder()
             .setCustomId("menu")
-            .setPlaceholder("choose!")
+            .setPlaceholder("اختر!")
             .addOptions([
                 {
-                    label: "Sing",
-                    description: "Insert your info",
+                    label: "سجل الدخول",
+                    description: "قم بتسجيل الدخول",
                     value: "1",
                     emoji: "💾"
                 },
                 {
-                    label: "Update your info",
-                    description: "Update your old info",
+                    label: "حدث معلوماتك",
+                    description: "قم بتحديث معلوماتك القديمة",
                     value: "2",
                     emoji: "🔃"
                 },
                 {
-                    label: "Search for some one",
-                    description: "Search some one info",
+                    label: "ابحث عن شخص",
+                    description: "قم بالبحث عن معلومات شخص ما",
                     value: "3",
                     emoji: "🔎"
                 },
@@ -448,6 +466,8 @@ client.on("messageCreate", async (msg) => {
 
 // sign
 
+const member = new Map();
+
 client.on("interactionCreate", async (int) => {
 
     if (int.isStringSelectMenu()) {
@@ -460,19 +480,19 @@ client.on("interactionCreate", async (int) => {
 
                 const modal = new ModalBuilder()
                     .setCustomId("SignModal")
-                    .setTitle("inter your info🔽");
+                    .setTitle("ادخل معلوماتك🔽");
 
                 const NameInput = new TextInputBuilder()
                     .setCustomId("name")
-                    .setLabel("Name")
-                    .setPlaceholder("ex: Hussam")
+                    .setLabel("الاسم")
+                    .setPlaceholder("مثال : حسام")
                     .setRequired(true)
                     .setStyle(TextInputStyle.Short);
 
                     const AgeInput = new TextInputBuilder()
                     .setCustomId("age")
-                    .setLabel("Age")
-                    .setPlaceholder("ex: 18")
+                    .setLabel("العمر")
+                    .setPlaceholder("مثال : 18")
                     .setRequired(true)
                     .setStyle(TextInputStyle.Short);
 
@@ -494,12 +514,12 @@ client.on("interactionCreate", async (int) => {
 
                 const modal = new ModalBuilder()
                     .setCustomId("SearchModal")
-                    .setTitle("Search someone info🔽");
+                    .setTitle("ابحث عن شخص🔽");
 
                 const idInput = new TextInputBuilder()
                     .setCustomId("id")
                     .setLabel("Id")
-                    .setPlaceholder("ex: 11537238294204")
+                    .setPlaceholder("مثال : 11537238294204")
                     .setRequired(true)
                     .setStyle(TextInputStyle.Short);
 
@@ -519,19 +539,19 @@ client.on("interactionCreate", async (int) => {
 
                 const modal = new ModalBuilder()
                     .setCustomId("UpdateModal")
-                    .setTitle("Update your info🔽");
+                    .setTitle("حدثث معلوماتك🔽");
 
                 const NewNameInput = new TextInputBuilder()
                     .setCustomId("NewName")
-                    .setLabel("change name")
-                    .setPlaceholder("ex: Hussam")
+                    .setLabel("غير الاسم")
+                    .setPlaceholder("مثال : حسام")
                     .setRequired(true)
                     .setStyle(TextInputStyle.Short);
 
                 const NewAgeInput = new TextInputBuilder()
                     .setCustomId("NewAge")
-                    .setLabel("change Age")
-                    .setPlaceholder("ex: 18")
+                    .setLabel("غير العمر")
+                    .setPlaceholder("مثال : 18")
                     .setRequired(true)
                     .setStyle(TextInputStyle.Short);
 
@@ -557,44 +577,79 @@ client.on("interactionCreate", async (int) => {
 
         if (int.customId === "SignModal") {
 
+            
+
          const name = int.fields.getTextInputValue("name")
   
          const age = int.fields.getTextInputValue("age")
 
-         const check = db.prepare(`
+            const check = db.prepare(`
             
             SELECT * FROM AgeUsers
-
             WHERE userId = ?
-            `).get(int.user.id)
-            
-            if (check) {return int.reply({content: "❌You have already signed before!", flags: MessageFlags.Ephemeral});
-            
-            
-            }
+         
 
-         db.prepare(`
-            INSERT INTO AgeUsers(
-            
-            userId,
-            username,
-            age
-            
-            
-            )
-            VALUES (?, ?, ?)
-            `).run(
-                 int.user.id,
-                 name,
-                 age
-            );
+            `).get(int.user.id);
 
-        await int.reply({content: "✅You have been signed successfully", flags: MessageFlags.Ephemeral})
+         const banned = db.prepare(`
+            
+            SELECT * FROM bannedUsers
+            WHERE userId = ?
+         
 
+            `).get(int.user.id);
 
-        }
+        const regect = db.prepare(`
+            
+            SELECT * FROM Regected
+            WHERE userId = ?
+         
+
+            `).get(int.user.id);
+
+            if (check) {return int.reply({content: "❌لقد سجلت بالفعل!", flags: MessageFlags.Ephemeral})}
+
+            if (banned) {return int.reply({content: "❌لا يمكنك تسجيل الدخول بعد حذفك لمعلوماتك!", flags: MessageFlags.Ephemeral})}
+            
+            if (regect) {return int.reply({content: "❌لقد تم رفضك بالفعل!", flags: MessageFlags.Ephemeral})}
+            
+
+            URL.set("url", int.user.avatarURL())                  
+
+         await int.reply({content: "✅لقد قمت بالتسجيل بنجاح", flags: MessageFlags.Ephemeral})
+
+             const applyChannel = int.guild.channels.cache.get("1527053527145513130")
+
+             
+
+     const embed = new EmbedBuilder().setTitle(`__📃${int.user.username} قام بالتقديم__`)
+     .setColor("White")
+     .setTimestamp()
+     .addFields({name: "الاسم", value: name},
+                {name:  "العمر", value: age},
+     ).setThumbnail(int.user.avatarURL())
+
+     const approvedButton = new ButtonBuilder()
+     .setCustomId(`a_${int.user.id}_${name}_${age}_${int.user.username}`)
+     .setEmoji("✅")
+     .setStyle(ButtonStyle.Success)
+
+     const denyButton = new ButtonBuilder()
+     .setCustomId(`d_${int.user.id}_${name}_${age}_${int.user.username}`)
+     .setEmoji("❌")
+     .setStyle(ButtonStyle.Danger)
+
+     
+
+     const row = new ActionRowBuilder().addComponents(approvedButton, denyButton)
+
+     applyChannel.send({embeds: [embed], components: [row]})
 
     }
+
+      }
+
+     
 
 // search system
 
@@ -615,16 +670,16 @@ if (int.member.permissions.has(PermissionFlagsBits.Administrator)) {
 
                 int.reply({embeds: [new EmbedBuilder().setColor("White")
                     .setThumbnail("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSM4a3fRsnjuGAy4UjGdc3gj7FRBSQw3mg15T33a7ZIpQ&s=10")
-                    .setTitle("__🧾User info__")
-                    .addFields({name: "Name", value: `${user.username}`},
-                        {name: "Age", value: `${user.age}`}
+                    .setTitle("__🧾معلومات المستخدم__")
+                    .addFields({name: "الاسم", value: `${user.username}`},
+                        {name: "العمر", value: `${user.age}`}
                     )
                 
                 
                 
-                ], flags: MessageFlags.Ephemeral})} else {int.reply({content: "❌Didn't find any member with the this id", flags: MessageFlags.Ephemeral})}
+                ], flags: MessageFlags.Ephemeral})} else {int.reply({content: "❌لم اعثر على المستخدم", flags: MessageFlags.Ephemeral})}
     
-        } else {int.reply({content: "❌You don't have the premission for that", flags: MessageFlags.Ephemeral})}
+        } else {int.reply({content: "❌لا تمتلك الصلاحية لهذا", flags: MessageFlags.Ephemeral})}
     
     }
 
@@ -646,7 +701,7 @@ if (int.member.permissions.has(PermissionFlagsBits.Administrator)) {
 
                 `).get(int.user.id)
 
-                if (user) {
+                if (user  && int.member.roles.cache.has("1520422545721921627")) {
 
                 db.prepare(`
                     
@@ -665,9 +720,10 @@ if (int.member.permissions.has(PermissionFlagsBits.Administrator)) {
                       int.user.id
                     )
 
-                  await int.reply({content:"✅Info has been updated successfully", flags: MessageFlags.Ephemeral})
+                  await int.reply({content:"✅تم تحديث معلوماتك بنجاح", flags: MessageFlags.Ephemeral})
+
                     
-                    } else {int.reply({content:"❌You don't have any info to update", flags: MessageFlags.Ephemeral})}
+                    } else {int.reply({content:"❌لا تمتلك معلومات لتحديثها", flags: MessageFlags.Ephemeral})}
 
 
 
@@ -683,28 +739,46 @@ client.on("interactionCreate", async (int) => {
 
 // delete info system
 
+     if (int.isButton()) {
+
      if (int.customId === "Delete") {
+
+
 
                 const user =  db.prepare(`
                 SELECT * FROM AgeUsers
                 
                 WHERE userId = ?
-                `).get(int.user.id)
 
-                if (user) {
+                `).get(int.user.id) 
+
+                if (user && int.member.roles.cache.has("1520422545721921627")) {
 
 db.prepare(`
     
     DELETE FROM AgeUsers
     
     WHERE userId = ?
+
+
     `).run(int.user.id)
 
-     int.reply({content: "✅Your info got deleted successfully", flags: MessageFlags.Ephemeral})
+
+     int.reply({content: "✅تم حذف معلوماتك بنجاح", flags: MessageFlags.Ephemeral})
+
+     db.prepare(` 
+        INSERT INTO bannedUsers (
+          
+        userId)
+
+        VALUES (?)
+        `).run(int.user.id)
+        
+
+     int.member.roles.remove("1520422545721921627")
 
 
-
-     } else {return int.reply({content: "❌You don't have any info to delete", flags: MessageFlags.Ephemeral})}
+     } else {int.reply({content: "❌لا تمتلك معلومات لحذفها", flags: MessageFlags.Ephemeral})}
     }
 
 // self Search system
@@ -714,7 +788,13 @@ db.prepare(`
                 
                 SELECT * FROM AgeUsers
                 
-                WHERE userId = ?
+                WHERE userId = ? 
+        
+                AND username IS NOT NULL
+
+                AND age IS NOT NULL
+
+
 
                 `).get(int.user.id)
 
@@ -722,16 +802,18 @@ db.prepare(`
 
                 int.reply({embeds: [new EmbedBuilder().setColor("White")
                     .setThumbnail("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSM4a3fRsnjuGAy4UjGdc3gj7FRBSQw3mg15T33a7ZIpQ&s=10")
-                    .setTitle("__🧾Your info__")
-                    .addFields({name: "Name", value: `${user.username}`},
-                        {name: "Age", value: `${user.age}`}
+                    .setTitle("__🧾معلوماتك__")
+                    .addFields({name: "الاسم", value: `${user.username}`},
+                        {name: "العمر", value: `${user.age}`}
                     )
                 
                 
                 
-                ], flags: MessageFlags.Ephemeral})} else {int.reply({content: "❌Didn't find any info about you", flags: MessageFlags.Ephemeral})}
+                ], flags: MessageFlags.Ephemeral})} else {int.reply({content: "❌لم اعثر على معلومات تتعلق بك", flags: MessageFlags.Ephemeral})}
 
     }
+
+    // search all system
       
                 if (int.customId === "AllSearch") {
 
@@ -740,11 +822,15 @@ db.prepare(`
             const users = db.prepare(`
                 
                 SELECT * FROM AgeUsers
+
+                WHERE username IS NOT NULL AND
+
+                age IS NOT NULL
                 `).all();
 
-                let member = {};
+                
 
-              
+                let member = {};
                     
               let  felids = []
 
@@ -758,7 +844,7 @@ db.prepare(`
                    if (users.length > 0) {
 
                       const embed = new EmbedBuilder()
-                      .setTitle("__👥All members__")
+                      .setTitle("__👥كل الاعضاء__")
                       .setThumbnail("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSM4a3fRsnjuGAy4UjGdc3gj7FRBSQw3mg15T33a7ZIpQ&s=10")
                       .setColor("White")
                      .addFields(felids)
@@ -771,16 +857,223 @@ db.prepare(`
 
                     const embeda = new EmbedBuilder()
                       .setColor("White")
-                     .setDescription("👥No Members yet")
+                     .setDescription("👥لا اعضاء حتى الان")
 
                      int.reply({embeds: [embeda], flags: MessageFlags.Ephemeral})
 
                 }
 
-            } else {int.reply({content: "❌You don't have the premission for that", flags: MessageFlags.Ephemeral})}
+            } else {int.reply({content: "❌انت لا تمتلك الصلاحية", flags: MessageFlags.Ephemeral})}
         }
+    
+              if (int.customId.startsWith("a_")) {
+
+                    
+
+               const UserId = int.customId.split("_")[1]
+
+               const UserName = int.customId.split("_")[2]
+
+               const UserAge = int.customId.split("_")[3]
+
+               const IdUserName = int.customId.split("_")[4]
+
+               const Url = URL.get("url") 
+
+               db.prepare(`
+                INSERT INTO AgeUsers (username, age, userId)
+
+                VALUES (?, ?, ?)
+               `).run(
+                   UserName,
+                   UserAge,
+                   UserId
+               )
+
+     const embed = new EmbedBuilder().setTitle(`__✅${IdUserName} تم قبول__`)
+     .setColor("Green")
+     .setTimestamp()
+     .addFields({name: "الاسم", value: UserName},
+                {name:  "العمر", value: UserAge},
+                {name: "id", value: UserId},
+     ).setThumbnail(Url)
+
+     const approvedButton = new ButtonBuilder()
+     .setCustomId("any")
+     .setEmoji("✅")
+     .setStyle(ButtonStyle.Success)
+     .setDisabled(true)
+
+     const denyButton = new ButtonBuilder()
+     .setCustomId("ggg")
+     .setEmoji("❌")
+     .setStyle(ButtonStyle.Danger)
+     .setDisabled(true)
+
+     const row = new ActionRowBuilder().addComponents(approvedButton, denyButton)
+
+               
+
+                 int.message.edit({embeds: [embed],components: [row]})
+
+
+
+const guildMember = await int.guild.members.fetch(UserId);
+
+await guildMember.roles.add("1520422545721921627");
+
+
+               int.reply({content: "✅لقد تم قبول العضو بنجاح!", flags: MessageFlags.Ephemeral})
+
+    
+                const embeda = new EmbedBuilder()
+.setColor("Green")
+.setAuthor({name: int.user.globalName})
+.setTitle("✅ لقد تم قبولك")
+.setThumbnail(int.guild.iconURL())
+.setDescription("**[اذهب للسيرفر](https://discord.gg/8EvubxT5)**")
+.setTimestamp();
+
+
+        
+    
+              const member = int.guild.members.cache.get(UserId)
+
+              if (member) {member.send({embeds: [embeda]})}
+
+
+    }
+
+                       if (int.customId.startsWith("d_")) {
+
+               const UserId = int.customId.split("_")[1]
+
+               const UserName = int.customId.split("_")[2]
+
+               const UserAge = int.customId.split("_")[3]
+
+               const IdUserName = int.customId.split("_")[4]
+
+               const Url = URL.get("url")
+               
+
+             const embed = new EmbedBuilder().setTitle(`__❌${IdUserName} تم رفض__`)
+     .setColor("Red")
+     .setTimestamp()
+     .addFields({name: "الاسم", value: UserName},
+                {name:  "العمر", value: UserAge},
+     ).setThumbnail(Url)
+
+     const approvedButton = new ButtonBuilder()
+     .setCustomId("any")
+     .setEmoji("✅")
+     .setStyle(ButtonStyle.Success)
+     .setDisabled(true)
+
+     const denyButton = new ButtonBuilder()
+     .setCustomId("no")
+     .setEmoji("❌")
+     .setStyle(ButtonStyle.Danger)
+     .setDisabled(true)
+
+     const row = new ActionRowBuilder().addComponents(approvedButton, denyButton)
+
+               
+
+                 int.message.edit({embeds: [embed],components: [row]})
+
+            
+            int.reply({content: "❌تم رفض العضو بنجاح!", flags: MessageFlags.Ephemeral})
+
+            db.prepare(`
+                INSERT INTO Regected (userId)
+
+        VALUES (?)
+        `).run(UserId)
+
+
+                          const embeda = new EmbedBuilder()
+.setColor("Red")
+.setAuthor({name: int.user.globalName})
+.setTitle("❌ تم رفض التقديم")
+.setThumbnail(int.guild.iconURL())
+.setDescription("**[اذهب للسيرفر](https://discord.gg/8EvubxT5)**")
+.setTimestamp();
+
+   const member = int.guild.members.cache.get(UserId)
+
+    if (member) {member.send({embeds: [embeda]})}
+
+}}
+});
+
+client.on("interactionCreate", (interaction) => {
+
+if (!interaction.isChatInputCommand) return;
+
+
+if (interaction.commandName === "clearhistory") {
+
+if (interaction.member.permissions.has(PermissionFlagsBits.Administrator)) {
+    
+  const User = interaction.options.getMember("target") 
+
+  if (User) {
+ 
+const ban = db.prepare(`
+    SELECT * FROM BannedUsers
+    
+    WHERE userId = ?
+    
+    
+    `).get(User.user.id)
+
+const regect = db.prepare(`
+    SELECT * FROM Regected
+    
+    WHERE userId = ?
+    
+    
+    `).get(User.user.id)
+
+if (ban) {
+
+ db.prepare(`
+    DELETE FROM BannedUsers
+    
+    WHERE userId = ?
+    
+    `).run(User.user.id)  
+
+    interaction.reply({content: "✅لقد تم فك الحظر بنجاح", flags: MessageFlags.Ephemeral})
+
+ }
+
+ if (regect) {
+
+     db.prepare(`
+    DELETE FROM Regected
+    
+    WHERE userId = ?
+    
+    `).run(User.user.id)  
+
+    interaction.reply({content: "✅لقد تم فك الرفض بنجاح", flags: MessageFlags.Ephemeral})
+ }
+
+ if (!regect || ban) {interaction.reply({content: "❌المستخدم لا يمتلك اي حظر او رفض", flags: MessageFlags.Ephemeral})}
+
+  } else {interaction.reply({content: "❌فشل العثور على المستخدم", flags: MessageFlags.Ephemeral})}
+
+   
+
+
+
+} else {interaction.reply({content: "❌لا تمتلك الصلاحية لذلك", flags: MessageFlags.Ephemeral})}
+
+}
+
+
 })
-
-
 
 client.login(process.env.TOKEN)
