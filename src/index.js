@@ -1,32 +1,16 @@
 require("dotenv").config();
 
 const Database = require("better-sqlite3");
-const { MessageFlagsBitField } = require("discord.js");
+const { MessageFlagsBitField, channelMention, roleMention, linkedRoleMention } = require("discord.js");
 const db = new Database("database.db");
 
 db.prepare(`
     CREATE TABLE IF NOT EXISTS AgeUsers (
-        userId TEXT PRIMARY KEY,
+        userId TEXT,
+        guildId TEXT,
         username TEXT DEFAULT "",
-        age INTEGER DEFAULT 0
-    )
-`).run();
-
-db.prepare(`
-    CREATE TABLE IF NOT EXISTS allready (
-        userId TEXT PRIMARY KEY
-    )
-`).run();
-
-db.prepare(`
-    CREATE TABLE IF NOT EXISTS BannedUsers (
-        userId TEXT PRIMARY KEY
-    )
-`).run();
-
-db.prepare(`
-    CREATE TABLE IF NOT EXISTS Regected (
-        userId TEXT PRIMARY KEY
+        age INTEGER DEFAULT 0,
+        PRIMARY KEY (guildId, userId)
     )
 `).run();
 
@@ -63,120 +47,151 @@ const client = new Client({
 
 const commands = [
   {
-    name: "unverify",
-    description: "Un verify someone",
+    name: "الغاء_التوثيق",
+    description: "الغاء التوثيق من شخص ما",
     default_member_permissions: PermissionFlagsBits.Administrator.toString(),
     options: [
       {
-        name: "target",
-        type: ApplicationCommandOptionType.Mentionable,
-        description: "the target user to un verify",
+        name: "الهدف",
+        type: ApplicationCommandOptionType.User,
+        description: "قم بتحديد العضو المستهدف",
         required: true,
       }
     ],
   },
   {
-    name: "ban",
-    description: "Ban someone",
+    name: "حظر",
+    description: "قم بحظر شخص ما من السيرفر",
     default_member_permissions: PermissionFlagsBits.BanMembers.toString(),
     options: [
       {
-        name: "usermention",
-        description: "hi",
-        type: ApplicationCommandOptionType.Mentionable,
+        name: "الهدف",
+        description: "قم بتحديد العضو المستهدف",
+        type: ApplicationCommandOptionType.User,
         required: true,
       },
       {
-        name: "reason",
-        description: "give a reason for the ban",
+        name: "السبب",
+        description: "سبب الباند",
         type: ApplicationCommandOptionType.String
       },
     ],
   },
   {
-    name: "ping",
-    description: "mention the ping role",
+    name: "تنبيه",
+    description: "قم بعمل منشن لرول معين",
     default_member_permissions: PermissionFlagsBits.MentionEveryone.toString(),
     options: [{
-      name: "message",
-      description: "send a message with the ping",
+      name: "الرسالة",
+      description: "اكتب رسالة مع المنشن",
       type: ApplicationCommandOptionType.String,
+      max_length: 256,
       required: true,
     },
     {
-      name: "role",
-      description: "chose the role to ping",
+      name: "الرتبة",
+      description: "اختر الرتبة التي سيتم عمل منشن لها",
       type: ApplicationCommandOptionType.Role,
       required: true,
     }
-
-
 ]
+  },
+  {
+    name: "البحث",
+    description: "ابحث عن معلومات عضو موثق في السيرفر",
+    default_member_permissions: PermissionFlagsBits.Administrator.toString(),
+    options: [{
+        name: "الهدف",
+        description: "قم بتحديد العضو المستهدف",
+        type: ApplicationCommandOptionType.User,
+        required: true,
+    }]
+  },
+    {
+    name: "ابحث_عن_جميع_الموثقين",
+    description: "ابحث عن معلومات جميع الموثقين بالسيرفر",
+    default_member_permissions: PermissionFlagsBits.Administrator.toString()
   }
 ];
 
 const rest = new REST({ version: 10 }).setToken(process.env.TOKEN);
 
+
 (async () => {
-   try {
-     console.log('Registring slash commands...');
-     await rest.put(
-       Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
-       { body: commands }
-     );
-     console.log('slash commands has registred successfully!');
-   } catch (error) {
-     console.log(`there was a error the error was: ${error}`);
-   } 
+    try {
+        console.log('Registering slash commands...');
+        const guildIds = process.env.GUILD_ID ? process.env.GUILD_ID.split(',').map(id => id.trim()) : [];
+
+        for (const guildId of guildIds) {
+            await rest.put(
+                Routes.applicationGuildCommands(process.env.CLIENT_ID, guildId),
+                { body: commands }
+            );
+        }
+        console.log('All slash commands have been registered successfully!');
+    } catch (error) {
+        console.log(`There was an error: ${error}`);
+    }
 })();
 
-client.once("clientReady", (c) => {
+client.once("clientReady", async (c) => {
     console.log(`logged in as ${client.user.tag}`);
     client.user.setActivity("Niki minaj", {
         type: ActivityType.Listening
     });
 });
 
-// Ping role button message
-client.on("messageCreate", (msg) => {
+// Ping role button message (تم إرجاعه كما كان)
+client.on("messageCreate", async (msg) => {
+
+    if (msg.content.startsWith(`ping`) && msg.mentions.roles.size > 0) {
+
+    const roleId = msg.mentions.roles.first()
+    if (!roleId) return;
+
     const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
-            .setCustomId("my_button")
+            .setCustomId(`my_button-${roleId}`)
             .setLabel("🔔")
             .setStyle(ButtonStyle.Success)
     );
     
-    if (msg.content === "button") {
-        msg.channel.send({
-            embeds: [
-              new EmbedBuilder()
-              .setTitle("__🔔ping رتبة__")
-              .setDescription('<اذا كنت مهتم انت تصلك اخر اخبار السيرفر اضغط الزر ادناه للحصول على رتبة <1521643199943282851@&')
-              .setColor("Yellow")
-            ],
-            components: [row]
-        });
-        msg.delete().catch(() => {});
-    }
+    msg.channel.send({
+        embeds: [
+          new EmbedBuilder()
+          .setTitle(`__🔔${roleId.name} رتبة__`)
+          .setDescription(`اذا كنت مهتم ان تصلك اخر اخبار السيرفر اضغط الزر ادناه للحصول على رتبة ${roleId}`)
+          .setColor("Yellow")
+        ],
+        components: [row]
+    });
+    msg.delete().catch(() => {});
+
+} else if (msg.content === `ping` && msg.mentions.roles.size === 0) {msg.channel.send({content: "❌يرجة عمل منشن لرتبة ال ping ضمن الرسالة \nمثال: `ping @اسم الرتبة `"})
+
+    await msg.delete();
+
+}
 });
 
-// Ping role give and remove from user
+// Ping role intraction
 client.on("interactionCreate", async (iny) => {
     if (!iny.isButton()) return;
 
-    if (iny.customId === "my_button") {
-        const roleId = "1521643199943282851";
-
-        if (!iny.member.roles.cache.has(roleId)) {
-            await iny.member.roles.add(roleId);
+    if (iny.customId.startsWith("my_button")) {
+        const roleId = iny.customId.split("-")[1];
+        const rawld = roleId.slice(3, -1);
+      
+        if (!iny.member.roles.cache.has(rawld)) {
+            await iny.member.roles.add(rawld);
             await iny.reply({
-                content: `🔔<@&1521643199943282851> لقد تم اضافة رتبة `,
-               flags: MessageFlags.Ephemeral
+                content: `🟢${roleId} لقد تم اضافة رتبة `,
+                flags: MessageFlags.Ephemeral
             });
         } else {
-            await iny.member.roles.remove(roleId);
+            await iny.member.roles.remove(rawld);
             await iny.reply({
-                content: `🔕<@&1521643199943282851> لقد تم ازالة رتبة `,
+                content: `🔴${roleId} لقد تم ازالة رتبة `,
                 flags: MessageFlags.Ephemeral
             });
         }
@@ -184,58 +199,125 @@ client.on("interactionCreate", async (iny) => {
 });
 
 // ban slash command interaction
-client.on("interactionCreate", async (int) => { 
+client.on("interactionCreate", async (int) => {
     if (!int.isChatInputCommand()) return;
-    if (int.commandName === "ban") {
-        let member = int.options.getMember("usermention");
+
+    if (int.commandName === "حظر") {
+        const user = int.options.getUser("الهدف", true);
+
+        const member = await int.guild.members
+            .fetch(user.id)
+            .catch(() => null);
+
 
         if (!member) {
             return int.reply({
-                content: "🤔لم اعثر على المستخدم",
-              flags: MessageFlags.Ephemeral
+                content: "🤔 فشل العثور على المستخدم",
+                flags: MessageFlags.Ephemeral
             });
         }
 
-        let reason = int.options.getString("reason") || "لم يتم تحديد السبب";
 
-        let embed = new EmbedBuilder()
-            .setTitle(`__🚫لقد تلقيت للتو حظر في سيرفر ${int.guild.name} server__`)
-            .addFields({name: "__❓السبب__", value: "```" + reason + "```"})
+    
+        if (member.id === int.user.id) {
+            return int.reply({
+                content: "❌ لا يمكنك حظر نفسك.",
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+        
+        if (int.member.roles.highest.position <= member.roles.highest.position) {
+            return int.reply({
+                content: "❌لا يمكنك حظر هذا العضو",
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+
+        const botMember = int.guild.members.me;
+
+        if (!botMember) {
+            return int.reply({
+                content: "❌ تعذر العثور على عضو البوت داخل السيرفر.",
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+        if (botMember.roles.highest.position <= member.roles.highest.position) {
+            return int.reply({
+                content: "❌لا أستطيع حظر هذا العضو",
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+        
+        if (!botMember.permissions.has("BanMembers")) {
+            return int.reply({
+                content: "❌ لا أملك صلاحية حظر الأعضاء.",
+                flags: MessageFlags.Ephemeral
+            });
+        }
+
+        const reason =
+            int.options.getString("السبب") || "لم يتم تحديد السبب";
+
+        const embed = new EmbedBuilder()
+            .setTitle(`🚫 لقد تلقيت حظرًا في سيرفر ${int.guild.name}`)
+            .addFields({
+                name: "❓ السبب",
+                value: "```" + reason + "```"
+            })
             .setColor("White")
-            .setAuthor({name: int.user.globalName, iconURL: int.user.avatarURL()})
+            .setAuthor({
+                name: int.user.globalName || int.user.username,
+                iconURL: int.user.avatarURL()
+            })
             .setThumbnail(int.guild.iconURL())
             .setTimestamp();
 
+        // إرسال رسالة خاصة قبل الحظر
         try {
             await member.send({ embeds: [embed] });
         } catch (err) {
             console.log(`Cannot send DM to ${member.user.tag}`);
         }
 
-        await member.ban({ reason });
+        // تنفيذ الحظر
+        try {
+            await member.ban({ reason });
 
-        await int.reply({
-            content: `✅ تم حظر ${member.user.tag}`,
-           flags: MessageFlags.Ephemeral
-        });
+            // حذف بيانات العضو من قاعدة البيانات
+            db.prepare(`
+                DELETE FROM AgeUsers
+                WHERE userId = ?
+            `).run(member.id);
 
-        db.prepare(`
-            DELETE FROM AgeUsers
-            WHERE userId = ?
-        `).run(member.user.id);
+            return int.reply({
+                content: `✅ تم حظر ${member.user.tag}`,
+                flags: MessageFlags.Ephemeral
+            });
+        } catch (err) {
+            console.error(err);
+
+            return int.reply({
+                content: "❌ حدث خطأ أثناء محاولة حظر العضو.",
+                flags: MessageFlags.Ephemeral
+            });
+        }
     }
 });
 
-// ping system
+// ping command interaction
 const Users = new Map();
 
 client.on("interactionCreate", async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
-    if (interaction.commandName !== "ping") return;
+    if (interaction.commandName !== "تنبيه") return;
 
     if (Users.has(interaction.user.id)) {
         return interaction.reply({
-            content:'انتظر `10m` لعمل `ping` اخر😡', 
+            content:'انتظر `10د` لعمل `تنبيه` اخر😡', 
             flags: MessageFlags.Ephemeral
         });
     }
@@ -248,13 +330,13 @@ client.on("interactionCreate", async (interaction) => {
         .setFooter({text: "🔔pinged by" + " " + interaction.user.username})
         .setTimestamp()
         .setColor("Yellow")
-        .setTitle(interaction.options.getString("message") || null);
+        .setTitle(interaction.options.getString("الرسالة") || null);
 
     Users.set(interaction.user.id, true);
 
     try {
         await interaction.channel.send({
-            content: `<@&${interaction.options.getRole("role").id}>`,
+            content: `<@&${interaction.options.getRole("الرتبة").id}>`,
             embeds: [embed4]
         });
 
@@ -280,33 +362,32 @@ client.on("interactionCreate", async (interaction) => {
     }
 });
 
-// search and sign system UI message (Using Container Components V2)
+// search and sign system
 client.on("messageCreate", async (msg) => {
-    if (msg.content === "S&S") {
+    if (msg.content.startsWith("S&S") && msg.mentions.channels.size > 0) {
+
+        msg.delete();
+
         const TextContainer = new TextDisplayBuilder()
             .setContent("# مرحبا بك!");
 
+        const channelId = msg.mentions.channels.first();
+
         const TextContainer2 = new TextDisplayBuilder()
-            .setContent("## • يجب عليك توثيق نفسك للوصول لباقي القنوات\n## • لكن نرجوا أولاً الاطلاع على الـ <#1544326222769561600>");
+            .setContent(`## • يجب عليك توثيق نفسك للوصول لباقي القنوات\n## • لكن نرجوا أولاً الاطلاع على  ${channelId}`);
 
         const sparetor = new SeparatorBuilder();
 
         const DeleteButton = new ButtonBuilder()
             .setCustomId("Delete")
             .setEmoji("🗑️")
-            .setLabel("حذف معلوماتي")
+            .setLabel("الغاء التوثيق")
             .setStyle(ButtonStyle.Danger);
 
         const SearchButton = new ButtonBuilder()
             .setCustomId("MySelfSearch")
             .setEmoji("🔎")
             .setLabel("عرض معلوماتي")
-            .setStyle(ButtonStyle.Primary);
-
-        const SearchAllButton = new ButtonBuilder()
-            .setCustomId("AllSearch")
-            .setEmoji("👥")
-            .setLabel("عرض معلومات جميع الاعضاء")
             .setStyle(ButtonStyle.Primary);
 
         const selectMenus = new StringSelectMenuBuilder()
@@ -324,17 +405,11 @@ client.on("messageCreate", async (msg) => {
                     description: "قم بتحديث معلوماتك القديمة",
                     value: "2",
                     emoji: "🔃"
-                },
-                {
-                    label: "ابحث عن شخص",
-                    description: "قم بالبحث عن معلومات شخص ما",
-                    value: "3",
-                    emoji: "🔎"
-                },
+                }
             ]);
 
         const ButtonRow = new ActionRowBuilder()
-            .addComponents(DeleteButton, SearchButton, SearchAllButton);
+            .addComponents(DeleteButton, SearchButton);
 
         const SelectRow = new ActionRowBuilder()
             .addComponents(selectMenus);
@@ -354,10 +429,15 @@ client.on("messageCreate", async (msg) => {
         });
 
         msg.delete().catch(() => {});
+    } else if (msg.content.startsWith("S&S") && msg.mentions.channels.size === 0) { msg.channel.send({content: "❌يرجة عمل منشن ل قناة القوانين ضمن الرسالة\n مثال: `S&S #اسم الروم`", flags: MessageFlags.Ephemeral} 
+
+
+      )
+       msg.delete();
     }
 });
 
-// Select Menu modals trigger
+// Select Menu modals
 client.on("interactionCreate", async (int) => {
     if (int.isStringSelectMenu() && int.customId === "menu") {
         const choice = int.values[0];
@@ -386,22 +466,6 @@ client.on("interactionCreate", async (int) => {
                 new ActionRowBuilder().addComponents(AgeInput)
             );
 
-            await int.showModal(modal);
-        }
-
-        if (choice === "3") {
-            const modal = new ModalBuilder()
-                .setCustomId("SearchModal")
-                .setTitle("ابحث عن شخص🔽");
-
-            const idInput = new TextInputBuilder()
-                .setCustomId("id")
-                .setLabel("Id")
-                .setPlaceholder("مثال : 11537238294204")
-                .setRequired(true)
-                .setStyle(TextInputStyle.Short);
-
-            modal.addComponents(new ActionRowBuilder().addComponents(idInput));
             await int.showModal(modal);
         }
 
@@ -434,133 +498,47 @@ client.on("interactionCreate", async (int) => {
     }
 });
 
-// Modal Submits & Buttons handler
+
 client.on("interactionCreate", async (int) => {
-    if (int.isModalSubmit()) {
-        // Sign system
-        if (int.customId === "SignModal") {
-            const name = int.fields.getTextInputValue("name");
-            const age = int.fields.getTextInputValue("age");
+    // Sign system
+    if (int.customId === "SignModal") {
+        const name = int.fields.getTextInputValue("name");
+        const age = int.fields.getTextInputValue("age");
 
-            const check = db.prepare(`
-                SELECT * FROM AgeUsers
-                WHERE userId = ?
-            `).get(int.user.id);
+        const check = db.prepare(`
+            SELECT * FROM AgeUsers
+            WHERE userId = ? AND guildId = ?
+        `).get(int.user.id, int.guild.id);
 
-            if (check) {
-                return int.reply({ content: "❌لقد توثقت بالفعل!", flags: MessageFlags.Ephemeral });
-            }
-
-            db.prepare(`
-                INSERT INTO AgeUsers (username, age, userId)
-                VALUES (?, ?, ?)
-            `).run(name, age, int.user.id);
-
-            try {
-                await int.member.roles.add("1520422545721921627");
-            } catch (e) {
-                console.log("Could not add role to member.");
-            }
-                        
-            await int.reply({ content: "✅لقد تم توثيقك بنجاح", flags: MessageFlags.Ephemeral});
+        if (check) {
+            return int.reply({ content: "❌لقد توثقت بالفعل!", flags: MessageFlags.Ephemeral });
         }
 
-        // Search system
-        if (int.customId === "SearchModal") {
-            if (int.member.permissions.has(PermissionFlagsBits.Administrator)) {
-                const idInput = int.fields.getTextInputValue("id"); 
-
-                const user = db.prepare(`
-                    SELECT * FROM AgeUsers
-                    WHERE userId = ?
-                `).get(idInput);
-
-                if (user) {
-                    return int.reply({
-                        embeds: [new EmbedBuilder().setColor("White")
-                            .setThumbnail("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSM4a3fRsnjuGAy4UjGdc3gj7FRBSQw3mg15T33a7ZIpQ&s=10")
-                            .setTitle("__🧾معلومات المستخدم__")
-                            .addFields(
-                                {name: "الاسم", value: `${user.username}`},
-                                {name: "العمر", value: `${user.age}`}
-                            )
-                        ], 
-                        flags: MessageFlags.Ephemeral
-                    });
-                } else {
-                    return int.reply({ content: "❌لم اعثر على المستخدم", flags: MessageFlags.Ephemeral});
-                }
-            } else {
-                return int.reply({ content: "❌لا تمتلك الصلاحية لهذا", flags: MessageFlags.Ephemeral });
-            }
-        }
-
-        // Update info system
-        if (int.customId === "UpdateModal") {
-            const newname = int.fields.getTextInputValue("NewName");
-            const newage = int.fields.getTextInputValue("NewAge");
-
-            const user = db.prepare(`
-                SELECT * FROM AgeUsers
-                WHERE userId = ?
-            `).get(int.user.id);
-
-            if (user && int.member.roles.cache.has("1520422545721921627")) {
-                db.prepare(`
-                    UPDATE AgeUsers
-                    SET username = ?, age = ?
-                    WHERE userId = ?
-                `).run(newname, newage, int.user.id);
-
-                await int.reply({ content: "✅تم تحديث معلوماتك بنجاح", flags: MessageFlags.Ephemeral });
-            } else {
-                await int.reply({ content: "❌لا تمتلك معلومات لتحديثها", flags: MessageFlags.Ephemeral });
-            }
-        }
+        db.prepare(`
+            INSERT INTO AgeUsers (username, age, userId, guildId)
+            VALUES (?, ?, ?, ?)
+        `).run(name, age, int.user.id, int.guild.id);
+                    
+        await int.reply({ content: "✅لقد تم توثيقك بنجاح", flags: MessageFlags.Ephemeral});
     }
 
-    // Button interactions (Delete, MySelfSearch, AllSearch)
-    if (int.isButton()) {
-        // Delete info system
-        if (int.customId === "Delete") {
+    // Search system
+    if (int.isChatInputCommand() && int.commandName === "البحث") {
+        if (int.member.permissions.has(PermissionFlagsBits.Administrator)) {
+            const target = int.options.getMember("الهدف"); 
+
+            if (target.user.bot) {return int.reply({content: "❌لا يمكنك البحث عن عن معلومات بوت", flags: MessageFlags.Ephemeral})}
+          
             const user = db.prepare(`
                 SELECT * FROM AgeUsers
-                WHERE userId = ?
-            `).get(int.user.id); 
-
-            if (user && int.member.roles.cache.has("1520422545721921627")) {
-                db.prepare(`
-                    DELETE FROM AgeUsers
-                    WHERE userId = ?
-                `).run(int.user.id);
-
-                db.prepare(` 
-                    INSERT OR IGNORE INTO BannedUsers (userId)
-                    VALUES (?)
-                `).run(int.user.id);
-                
-                await int.member.roles.remove("1520422545721921627").catch(() => {});
-
-                await int.reply({ content: "✅تم حذف معلوماتك بنجاح", flags: MessageFlags.Ephemeral });
-            } else {
-                await int.reply({ content: "❌لا تمتلك معلومات لحذفها", flags: MessageFlags.Ephemeral });
-            }
-        }
-
-        // Self Search system
-        if (int.customId === "MySelfSearch") {
-            const user = db.prepare(`
-                SELECT * FROM AgeUsers
-                WHERE userId = ? 
-                AND username IS NOT NULL
-                AND age IS NOT NULL
-            `).get(int.user.id);
+                WHERE userId = ? AND guildId = ?
+            `).get(target.user.id, int.guild.id);
 
             if (user) {
-                await int.reply({
+                return int.reply({
                     embeds: [new EmbedBuilder().setColor("White")
                         .setThumbnail("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSM4a3fRsnjuGAy4UjGdc3gj7FRBSQw3mg15T33a7ZIpQ&s=10")
-                        .setTitle("__🧾معلوماتك__")
+                        .setTitle("__🧾معلومات المستخدم__")
                         .addFields(
                             {name: "الاسم", value: `${user.username}`},
                             {name: "العمر", value: `${user.age}`}
@@ -569,28 +547,95 @@ client.on("interactionCreate", async (int) => {
                     flags: MessageFlags.Ephemeral
                 });
             } else {
-                await int.reply({ content: "❌لم اعثر على معلومات تتعلق بك", flags: MessageFlags.Ephemeral });
+                return int.reply({ content: "❌المستخدم ليس موثق", flags: MessageFlags.Ephemeral});
+            }
+        } else {
+            return int.reply({ content: "❌لا تمتلك الصلاحية لهذا", flags: MessageFlags.Ephemeral });
+        }
+    }
+
+    // Update info system
+    if (int.customId === "UpdateModal") {
+        const newname = int.fields.getTextInputValue("NewName");
+        const newage = int.fields.getTextInputValue("NewAge");
+
+        const user = db.prepare(`
+            SELECT * FROM AgeUsers
+            WHERE userId = ?
+        `).get(int.user.id);
+
+        if (user) {
+            db.prepare(`
+                UPDATE AgeUsers
+                SET username = ?, age = ?
+                WHERE userId = ? AND guildId = ?
+            `).run(newname, newage, int.user.id, int.guild.id);
+
+            await int.reply({ content: "✅تم تحديث معلوماتك بنجاح", flags: MessageFlags.Ephemeral });
+        } else {
+            await int.reply({ content: "❌يجب عليك توثيق نفسك قبل ذلك", flags: MessageFlags.Ephemeral });
+        }
+    }
+
+    // Button interactions (Delete, MySelfSearch, AllSearch)
+
+        if (int.customId === "Delete") {
+            const user = db.prepare(`
+                SELECT * FROM AgeUsers
+                WHERE userId = ? AND guildId = ?
+            `).get(int.user.id, int.guild.id); 
+
+            if (user) {
+                db.prepare(`
+                    DELETE FROM AgeUsers
+                    WHERE userId = ? AND guildId = ?
+                `).run(int.user.id, int.guild.id);
+
+                await int.reply({ content: "✅تم الغاء توثيقك بنجاح", flags: MessageFlags.Ephemeral });
+            } else {
+                await int.reply({ content: "❌لست موثقاً من الاساس", flags: MessageFlags.Ephemeral });
             }
         }
 
-        // Search all system
-        if (int.customId === "AllSearch") {
-            if (int.member.permissions.has(PermissionFlagsBits.Administrator)) {
+        if (int.customId === "MySelfSearch") {
+            const user = db.prepare(`
+                SELECT * FROM AgeUsers
+                WHERE userId = ? AND guildId = ?
+                AND username IS NOT NULL
+                AND age IS NOT NULL
+            `).get(int.user.id, int.guild.id);
+
+            if (user) {
+                await int.reply({
+                    embeds: [new EmbedBuilder().setColor("White")
+                        .setThumbnail("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSM4a3fRsnjuGAy4UjGdc3gj7FRBSQw3mg15T33a7ZIpQ&s=10")
+                        .setTitle("__🧾معلوماتك__")
+                        .addFields(
+                            {name: "الاسم ", value: `${user.username}`},
+                            {name: "العمر", value: `${user.age}`}
+                        )
+                    ], 
+                    flags: MessageFlags.Ephemeral
+                });
+            }
+
+        }
+
+                if (int.commandName === "ابحث_عن_جميع_الموثقين") {
                 const users = db.prepare(`
                     SELECT * FROM AgeUsers
-                `).all();
+                    WHERE guildId = ?
+                `).all(int.guild.id);
 
                 let memberList = "";
-                let number = 0;
 
                 users.forEach(user => {
-                    number += 1; 
                     memberList += `\n<@${user.userId}>\nname: ${user.username} \nage: ${user.age}\n`;
                 });
 
                 if (users.length > 0) {
                     const embed = new EmbedBuilder()
-                        .setTitle("__👥كل الاعضاء__")
+                        .setTitle("__👥كل الاعضاء الموثقين__")
                         .setThumbnail("https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSM4a3fRsnjuGAy4UjGdc3gj7FRBSQw3mg15T33a7ZIpQ&s=10")
                         .setColor("White")
                         .addFields({
@@ -602,41 +647,57 @@ client.on("interactionCreate", async (int) => {
                 } else {
                     const embeda = new EmbedBuilder()
                         .setColor("White")
-                        .setDescription("👥لا اعضاء حتى الان");
+                        .setDescription("👥لا اعضاء موثقين حتى الان");
 
                     await int.reply({ embeds: [embeda], flags: MessageFlags.Ephemeral });
                 }
-            } else {
-                await int.reply({ content: "❌انت لا تمتلك الصلاحية", flags: MessageFlags.Ephemeral });
-            }
-        }
-    }
+            } 
+    
 });
 
 client.on("interactionCreate", async (interaction) => {
-
-    if (interaction.commandName === "unverify") {
-
-       const target = interaction.options.getMember("target")
+    if (!interaction.isChatInputCommand()) return;
+    if (interaction.commandName === "الغاء_التوثيق") {
+       const target = interaction.options.getMember("الهدف");
+       if (!target) {
+           return interaction.reply({ content: `لم اعثر على العضو😔`, flags: MessageFlags.Ephemeral });
+       }
+       if (target.user.bot) {
+           return interaction.reply({ content: "❌لا يمكنك ازالة التوثيق لبوت", flags: MessageFlags.Ephemeral });
+       }
 
        const check = db.prepare(`SELECT * FROM AgeUsers
-                                 WHERE userId = ?
-                             `).run(target.user.id)
+                                 WHERE userId = ? AND guildId = ?
+                             `).get(target.user.id, interaction.guild.id);
 
-       if (check && target) {
-
+       if (check) {
         db.prepare(`
             DELETE FROM AgeUsers
-            WHERE userId = ?
-        `).run(target.user.id);
+            WHERE userId = ? AND guildId = ?
+        `).run(target.user.id, interaction.guild.id);
 
-        interaction.reply({content:`✅${target.user.username} تم ازالة التوثيق من`, flags: MessageFlags.Ephemeral})
-
-       } else if (!check) {interaction.reply({content:`❌${target.user.username} ليس موثقا من الاساس`, flags: MessageFlags.Ephemeral })
-    
-    } else if (!target) {interaction.reply({content: `لم اعثر على العضو😔`, flags: MessageFlags.Ephemeral
-    })}
+        interaction.reply({ content: `✅${target.user.username} تم ازالة التوثيق من`, flags: MessageFlags.Ephemeral });
+       } else {
+        interaction.reply({ content: `❌${target.user.username} ليس موثقا من الاساس`, flags: MessageFlags.Ephemeral });
+       }
     }
+});
+
+
+// games 
+
+client.on("messageCreate", (msg) => {
+
+if (msg.content === "gam") {
+
+
+
+
+
+
+
+    
+}
 
 
 
